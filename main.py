@@ -44,3 +44,9 @@ def add_player(playerId: str):
     game_state["players"].append({"playerId": playerId})
     return {"message": "Player added", "current": game_state.get("players", [])}
 
+@app.post("/reset")
+def reset_game():
+    game_state.clear()
+    game_state["towers"] = []
+    return {"message": "Game reset", "current": game_state}
+
