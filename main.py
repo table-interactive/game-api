@@ -14,13 +14,20 @@ app.add_middleware(
 
 game_state = {"towers": []}
 
-class TowerPlacement(BaseModel):
+class TowerData(BaseModel):
     towerId: str
     x: int
     y: int
 
+
 @app.post("/tower/place")
-def place_tower(data: TowerPlacement):
+def place_tower(towerId: str):
+    if towerId == "LECTEUR_PORTE_1":
+        data = TowerData(towerId=towerId, x=250, y=250)
+    elif towerId == "LECTEUR_PORTE_2":
+        data = TowerData(towerId=towerId, x=650, y=200)
+    else:
+        data = TowerData(towerId=towerId, x=950, y=450)
     game_state["towers"].append(data.dict())
     return {"message": "Tower placed", "current": game_state["towers"]}
 
