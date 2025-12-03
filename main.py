@@ -22,12 +22,14 @@ class TowerData(BaseModel):
 
 @app.post("/tower/place")
 def place_tower(towerId: str):
-    if towerId == "LECTEUR_PORTE_1":
+    if towerId == "LECTEUR_1":
         data = TowerData(towerId=towerId, x=250, y=250)
-    elif towerId == "LECTEUR_PORTE_2":
+    elif towerId == "LECTEUR_2":
         data = TowerData(towerId=towerId, x=650, y=200)
-    else:
+    elif towerId == "LECTEUR_3":
         data = TowerData(towerId=towerId, x=950, y=450)
+    else:
+        return {"error": "Invalid towerId"}
     game_state["towers"].append(data.dict())
     return {"message": "Tower placed", "current": game_state["towers"]}
 
