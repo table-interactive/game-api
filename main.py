@@ -47,14 +47,12 @@ def place_tower(request: TowerRequest):  # Utilisation du modèle Pydantic
     # Note : Assure-toi que ces IDs correspondent à ce que ton Node.js envoie !
     if towerId == "LECTEUR_PORTE_1" or towerId == "LECTEUR_1":
         data = TowerData(towerId=towerId, x=250, y=250)
-    elif towerId == "LECTEUR_PORTE_2" or towerId == "LECTEUR_2":
+    elif towerId == "LECTEUR_2":
         data = TowerData(towerId=towerId, x=650, y=200)
-    elif towerId == "LECTEUR_3":
+    elif towerId == "LECTEUR_PORTE_3":
         data = TowerData(towerId=towerId, x=950, y=450)
     else:
-        # Position par défaut si l'ID est inconnu
-        print(f"ID Inconnu ({towerId}), placement par défaut")
-        data = TowerData(towerId=towerId, x=50, y=50)
+        return {"error": "Unknown towerId"}
 
     # Ajout au jeu
     game_state["towers"].append(data.dict())
