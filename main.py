@@ -8,53 +8,59 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # En dev, on laisse tout passer
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- CONFIGURATION HARDCODÉE (La "Carte" physique) ---
-# Associe le nom de l'Arduino (DEVICE_ID) à une position X/Y sur l'écran
+# --- 1. CONFIGURATION DES EMPLACEMENTS (Aligné sur le Frontend) ---
+# On utilise exactement les coordonnées de vos "SLOTS" dans le code React (S1, S2, S3)
 BORNE_CONFIG = {
-    "BORNE_JEU_1": {"x": 150, "y": 300, "name": "Zone Entrée"},
-    "BORNE_JEU_2": {"x": 400, "y": 100, "name": "Zone Centre"},
-    "BORNE_JEU_3": {"x": 650, "y": 300, "name": "Zone Sortie"},
-    # Le capteur de mouvement n'a pas de position fixe, il déclenche un événement global
+    # Slot 1 (S1) du frontend
+    "BORNE_JEU_1": {"x": 250, "y": 250, "name": "Emplacement Haut Gauche"},
+    # Slot 2 (S2) du frontend
+    "BORNE_JEU_2": {"x": 650, "y": 200, "name": "Emplacement Haut Centre"},
+    # Slot 3 (S3) du frontend
+    "BORNE_JEU_3": {"x": 950, "y": 450, "name": "Emplacement Bas Droite"},
+    # Capteur ultrason
     "BORNE_MOUVEMENT": {"type": "GLOBAL_EVENT"},
 }
 
-# --- CONFIGURATION DES BADGES (Le "Grimoire") ---
-# Associe un ID de badge RFID à un Type de Tour (Feu, Glace, etc.)
+# --- 2. CONFIGURATION DES BADGES (Aligné sur le Frontend) ---
+# On mappe les RFIDs vers les noms exacts attendus par PIXI.js :
+# "Archer", "Swordsman", "Mage", "Healer"
 TAG_MAPPING = {
-    # Exemples de badges (à remplacer par vos vrais IDs reçus dans les logs)
-    "E2 45 88 A1": "FIRE_TOWER",
-    "A4 21 55 B2": "ICE_TOWER",
-    "CC 12 99 00": "ARCHER_TOWER",
-    "DEFAULT": "BASIC_TOWER",  # Si le badge est inconnu
+    # REMPLACEZ CES IDs PAR VOS VRAIS BADGES !
+    "E2 45 88 A1": "Archer",  # Bleu, tir rapide
+    "A4 21 55 B2": "Mage",  # Violet, dégâts de zone
+    "CC 12 99 00": "Swordsman",  # Rouge, courte portée rapide
+    "DD 33 44 55": "Healer",  # Vert, soigne les vies
+    # Type par défaut si badge inconnu
+    "DEFAULT": "Swordsman",
 }
 
 # --- ÉTAT DU JEU ---
 game_state = {
-    "towers": [],  # Liste des tours posées
-    "events": [],  # Liste des événements (ex: "WAVE_START")
-    "last_rfid": None,  # Pour debug
+    "towers": [],
+    "events": [],
+    "players": [],  # Ajouté pour que le frontend détecte "hasPlayer"
 }
 
 # --- MODÈLES DE DONNÉES ---
 
 
-# Ce que Node.js nous envoie
+# Reçu de Node.js
 class GameEventRequest(BaseModel):
-    towerId: str  # ex: "BORNE_JEU_1"
-    rfidTag: Optional[str] = None  # ex: "E2 45 88..." (Seulement si RFID)
-    action: Optional[str] = None  # ex: "movement" (Seulement si Mouvement)
+    towerId: str
+    rfidTag: Optional[str] = None
+    action: Optional[str] = None
 
 
-# Ce qu'on renvoie au Frontend
+# Envoyé au Frontend (Noms de champs alignés sur TowerDTO du frontend)
 class TowerData(BaseModel):
-    id: str
-    type: str
+    towerId: str  # Important: le front attend "towerId", pas "id"
+    towerType: str  # Important: le front attend "towerType", pas "type"
     x: int
     y: int
     owner_rfid: str
@@ -62,44 +68,40 @@ class TowerData(BaseModel):
 
 @app.post("/tower/place")
 def handle_game_event(request: GameEventRequest):
-    """
-    Route unique qui gère TOUT : placement de tours et événements de mouvement.
-    """
     device_id = request.towerId
 
-    # 1. GESTION DU MOUVEMENT (Capteur Ultrason)
+    # A. GESTION DU MOUVEMENT (VAGUE)
     if request.action == "movement" or request.action == "movement_detected":
         print(f"🌊 VAGUE DÉCLENCHÉE par {device_id}")
+        # Le frontend gère les vagues auto, mais on pourrait forcer ici si besoin
+        # Pour l'instant, on s'assure juste qu'il y a un joueur "fictif" pour démarrer le jeu
+        if not game_state["players"]:
+            game_state["players"].append({"id": "player_1"})
+        return {"status": "wave_signal_received"}
 
-        # On ajoute un événement que le frontend pourra lire pour lancer la vague
-        event = {"type": "START_WAVE", "source": device_id}
-        game_state["events"].append(event)
-
-        return {"status": "wave_started", "events": game_state["events"]}
-
-    # 2. GESTION DES TOURS (Capteurs RFID)
+    # B. GESTION DES TOURS (RFID)
     if device_id in BORNE_CONFIG and request.rfidTag:
         config = BORNE_CONFIG[device_id]
         rfid = request.rfidTag
 
-        # Déterminer le type de tour grâce au badge
+        # Mapping vers les classes du Frontend (Archer, Mage...)
         tower_type = TAG_MAPPING.get(rfid, TAG_MAPPING["DEFAULT"])
 
-        print(
-            f"🏰 Tour {tower_type} placée en {config['name']} ({config['x']}, {config['y']})"
-        )
+        print(f"🏰 Tour {tower_type} placée sur {device_id}")
 
-        # Création de la donnée de la tour
+        # On s'assure qu'il y a un joueur actif dès qu'on pose une tour
+        if not game_state["players"]:
+            game_state["players"].append({"id": "player_1"})
+
         new_tower = {
-            "towerId": device_id,  # On utilise l'ID de la borne comme ID unique de l'emplacement
-            "type": tower_type,
+            "towerId": device_id,
+            "towerType": tower_type,  # Nommage JSON corrigé
             "x": config["x"],
             "y": config["y"],
             "owner_rfid": rfid,
         }
 
-        # Logique : Si une tour existe déjà sur cette borne, on l'écrase (mise à jour)
-        # On cherche si une tour a déjà cet ID de borne
+        # Mise à jour ou ajout (remplacement si la borne est déjà occupée)
         existing_index = next(
             (
                 index
@@ -114,7 +116,6 @@ def handle_game_event(request: GameEventRequest):
         else:
             game_state["towers"].append(new_tower)
 
-        game_state["last_rfid"] = rfid
         return {"status": "tower_placed", "towers": game_state["towers"]}
 
     return {"error": "Unknown device or missing data"}
@@ -122,18 +123,12 @@ def handle_game_event(request: GameEventRequest):
 
 @app.get("/state")
 def get_state():
-    """
-    Appelé par le frontend (React/Vue) toutes les X ms pour mettre à jour l'écran
-    """
-    # On renvoie l'état et on peut 'consommer' les événements si besoin
-    # Ici on laisse les événements, le front devra gérer les doublons ou on peut les clear
-    response = game_state.copy()
-    return response
+    return game_state
 
 
 @app.post("/reset")
 def reset_game():
     game_state["towers"] = []
     game_state["events"] = []
-    game_state["last_rfid"] = None
+    game_state["players"] = []  # Reset des joueurs aussi
     return {"message": "Game reset", "current": game_state}
