@@ -1,67 +1,77 @@
 from typing import Dict, List
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 app = FastAPI()
 
-# Configuration CORS (Autorise ton frontend React/Vue/etc)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "*",
-    ],  # J'ai ajouté "*" pour faciliter les tests
+    allow_origins=["http://localhost:5173", "http://localhost:3000", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Stockage en mémoire
+# --- État global du jeu ---
 game_state = {"towers": [], "players": []}
 
 
-# Modèle pour stocker les données d'une tour
 class TowerData(BaseModel):
     towerId: str
+    towerType: str
     x: int
     y: int
 
 
-# --- CORRECTIF 422 : Modèle pour recevoir la requête ---
 class TowerRequest(BaseModel):
     towerId: str
-
-
-# -------------------------------------------------------
+    towerType: str
 
 
 @app.post("/tower/place")
-def place_tower(request: TowerRequest):  # Utilisation du modèle Pydantic
+def place_tower(request: TowerRequest):
     towerId = request.towerId
-    print(f"Reçu towerId: {towerId}")  # Log pour debug
+    towerType = request.towerType
 
-    # Logique de positionnement selon l'ID reçu
-    # Note : Assure-toi que ces IDs correspondent à ce que ton Node.js envoie !
-    if towerId == "LECTEUR_PORTE_1" or towerId == "LECTEUR_1":
-        data = TowerData(towerId=towerId, x=250, y=250)
-    elif towerId == "LECTEUR_2":
-        data = TowerData(towerId=towerId, x=650, y=200)
-    elif towerId == "LECTEUR_PORTE_3":
-        data = TowerData(towerId=towerId, x=950, y=450)
-    elif towerId == "LECTEUR_PORTE_2":
+    # --- Gestion des positions prédéfinies ---
+    positions = {
+        "LECTEUR_PORTE_1": (250, 250),
+        "LECTEUR_1": (250, 250),
+        "LECTEUR_2": (650, 200),
+        "LECTEUR_PORTE_3": (950, 450),
+    }
+
+    # --- Cas particulier : lecteur joueur ---
+    if towerId == "LECTEUR_PORTE_2":
         if "players" not in game_state:
             game_state["players"] = []
-        game_state["players"].append({"playerId": towerId})
+        # éviter les doublons de joueurs
+        if not any(p["playerId"] == towerId for p in game_state["players"]):
+            game_state["players"].append({"playerId": towerId})
         return {"message": "Player added", "current": game_state.get("players", [])}
-    
 
-    # Ajout au jeu
-    game_state["towers"].append(data.dict())
+    # --- Position de la tour ---
+    if towerId in positions:
+        x, y = positions[towerId]
+        data = TowerData(towerId=towerId, towerType=towerType, x=x, y=y)
+    else:
+        return {"error": f"Unknown tower ID: {towerId}"}
 
-    return {"message": "Tower placed", "current": game_state["towers"]}
+    # --- Si une tour avec le même ID existe déjà, on la remplace ---
+    existing_index = next(
+        (i for i, t in enumerate(game_state["towers"]) if t["towerId"] == towerId),
+        None,
+    )
+
+    if existing_index is not None:
+        game_state["towers"][existing_index] = data.dict()
+        message = "Tower replaced"
+    else:
+        game_state["towers"].append(data.dict())
+        message = "Tower placed"
+
+    return {"message": message, "current": game_state["towers"]}
 
 
 @app.get("/state")
@@ -69,18 +79,9 @@ def get_state():
     return game_state
 
 
-# @app.post("/players")
-# def add_player(
-#     playerId: str,): 
-#     if "players" not in game_state:
-#         game_state["players"] = []
-
-#     game_state["players"].append({"playerId": playerId})
-#     return {"message": "Player added", "current": game_state.get("players", [])}
-
 @app.post("/reset")
 def reset_game():
     game_state.clear()
     game_state["towers"] = []
+    game_state["players"] = []
     return {"message": "Game reset", "current": game_state}
-
