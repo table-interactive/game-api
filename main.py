@@ -27,79 +27,61 @@ BORNE_CONFIG = {
 # --- CONFIGURATION DES BADGES (Le "Grimoire") ---
 # Associe un ID de badge RFID à un Type de Tour (Feu, Glace, etc.)
 TAG_MAPPING = {
-    # Exemples de badges (à remplacer par vos vrais IDs reçus dans les logs)
-    "E2 45 88 A1": "FIRE_TOWER",
-    "A4 21 55 B2": "ICE_TOWER",
-    "CC 12 99 00": "ARCHER_TOWER",
-    "DEFAULT": "BASIC_TOWER",  # Si le badge est inconnu
+    "E2 45 88 A1": "Archer",
+    "A4 21 55 B2": "Swordsman",
+    "CC 12 99 00": "Mage",
+    "DEFAULT": "Healer",  # Si le badge est inconnu
 }
 
 # --- ÉTAT DU JEU ---
 game_state = {
     "towers": [],  # Liste des tours posées
     "events": [],  # Liste des événements (ex: "WAVE_START")
-    "last_rfid": None,  # Pour debug
+    "last_rfid": None,
+    "players": [],  # Pour compatibilité avec le front
 }
+
 
 # --- MODÈLES DE DONNÉES ---
 
-
-# Ce que Node.js nous envoie
 class GameEventRequest(BaseModel):
     towerId: str  # ex: "BORNE_JEU_1"
     rfidTag: Optional[str] = None  # ex: "E2 45 88..." (Seulement si RFID)
     action: Optional[str] = None  # ex: "movement" (Seulement si Mouvement)
 
 
-# Ce qu'on renvoie au Frontend
-class TowerData(BaseModel):
-    id: str
-    type: str
-    x: int
-    y: int
-    owner_rfid: str
-
+# --- ROUTES ---
 
 @app.post("/tower/place")
 def handle_game_event(request: GameEventRequest):
     """
-    Route unique qui gère TOUT : placement de tours et événements de mouvement.
+    Gère placement/remplacement de tours ou détection de mouvement.
     """
     device_id = request.towerId
 
-    # 1. GESTION DU MOUVEMENT (Capteur Ultrason)
+    # 1. Gestion du mouvement
     if request.action == "movement" or request.action == "movement_detected":
         print(f"🌊 VAGUE DÉCLENCHÉE par {device_id}")
-
-        # On ajoute un événement que le frontend pourra lire pour lancer la vague
         event = {"type": "START_WAVE", "source": device_id}
         game_state["events"].append(event)
-
         return {"status": "wave_started", "events": game_state["events"]}
 
-    # 2. GESTION DES TOURS (Capteurs RFID)
+    # 2. Gestion des tours (RFID)
     if device_id in BORNE_CONFIG and request.rfidTag:
         config = BORNE_CONFIG[device_id]
         rfid = request.rfidTag
 
-        # Déterminer le type de tour grâce au badge
         tower_type = TAG_MAPPING.get(rfid, TAG_MAPPING["DEFAULT"])
+        print(f"🏰 Tour {tower_type} placée en {config['name']} ({config['x']}, {config['y']})")
 
-        print(
-            f"🏰 Tour {tower_type} placée en {config['name']} ({config['x']}, {config['y']})"
-        )
-
-        # Création de la donnée de la tour
         new_tower = {
-            "towerId": device_id,  # On utilise l'ID de la borne comme ID unique de l'emplacement
-            "type": tower_type,
+            "towerId": device_id,        # ✅ cohérent avec le front
+            "towerType": tower_type,     # ✅ cohérent avec le front
             "x": config["x"],
             "y": config["y"],
-            "owner_rfid": rfid,
         }
 
-        # Logique : Si une tour existe déjà sur cette borne, on l'écrase (mise à jour)
-        # On cherche si une tour a déjà cet ID de borne
+        # Remplacement si la borne a déjà une tour
         existing_index = next(
             (
                 index
@@ -123,17 +105,18 @@ def handle_game_event(request: GameEventRequest):
 @app.get("/state")
 def get_state():
     """
-    Appelé par le frontend (React/Vue) toutes les X ms pour mettre à jour l'écran
+    Appelé par le frontend toutes les ~secondes pour mettre à jour l'affichage.
     """
-    # On renvoie l'état et on peut 'consommer' les événements si besoin
-    # Ici on laisse les événements, le front devra gérer les doublons ou on peut les clear
-    response = game_state.copy()
-    return response
+    return game_state
 
 
 @app.post("/reset")
 def reset_game():
-    game_state["towers"] = []
-    game_state["events"] = []
+    """
+    Réinitialise complètement le jeu.
+    """
+    game_state["towers"].clear()
+    game_state["events"].clear()
     game_state["last_rfid"] = None
+    game_state["players"].clear()
     return {"message": "Game reset", "current": game_state}
