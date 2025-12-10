@@ -1,5 +1,4 @@
 from typing import Dict, List, Optional
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -14,39 +13,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 1. CONFIGURATION DES EMPLACEMENTS (Aligné sur le Frontend) ---
-# On utilise exactement les coordonnées de vos "SLOTS" dans le code React (S1, S2, S3)
+# --- CONFIG ---
 BORNE_CONFIG = {
-    # Slot 1 (S1) du frontend
-    "BORNE_JEU_1": {"x": 250, "y": 250, "name": "Emplacement Haut Gauche"},
-    # Slot 2 (S2) du frontend
-    "BORNE_JEU_2": {"x": 650, "y": 200, "name": "Emplacement Haut Centre"},
-    # Slot 3 (S3) du frontend
-    "BORNE_JEU_3": {"x": 950, "y": 450, "name": "Emplacement Bas Droite"},
-    # Capteur ultrason
+    "LECTEUR_PORTE_1": {"x": 150, "y": 300, "name": "Zone Entrée"},
+    "LECTEUR_PORTE_2": {"x": 400, "y": 100, "name": "Zone Centre"},
+    "BORNE_JEU_3": {"x": 650, "y": 300, "name": "Zone Sortie"},
     "BORNE_MOUVEMENT": {"type": "GLOBAL_EVENT"},
 }
 
-# --- 2. CONFIGURATION DES BADGES (Aligné sur le Frontend) ---
-# On mappe les RFIDs vers les noms exacts attendus par PIXI.js :
-# "Archer", "Swordsman", "Mage", "Healer"
 TAG_MAPPING = {
     "E2 45 88 A1": "Archer",
     "A4 21 55 B2": "Swordsman",
     "CC 12 99 00": "Mage",
-    "DEFAULT": "Healer",  # Si le badge est inconnu
+    "DEFAULT": "Healer",
 }
 
-# --- ÉTAT DU JEU ---
 game_state = {
-    "towers": [],  # Liste des tours posées
-    "events": [],  # Liste des événements (ex: "WAVE_START")
+    "towers": [],
+    "events": [],
     "last_rfid": None,
-    "players": [],  # Pour compatibilité avec le front
+    "players": [],
 }
 
-
-# --- MODÈLES DE DONNÉES ---
 
 class GameEventRequest(BaseModel):
     towerId: str
@@ -54,52 +42,44 @@ class GameEventRequest(BaseModel):
     action: Optional[str] = None
 
 
-# --- ROUTES ---
-
 @app.post("/tower/place")
 def handle_game_event(request: GameEventRequest):
-    """
-    Gère placement/remplacement de tours ou détection de mouvement.
-    """
-    device_id = request.towerId
+    device_id = request.towerId.strip()
 
-    # 1. Gestion du mouvement
-    if request.action == "movement" or request.action == "movement_detected":
+    # --- 1. GESTION DU MOUVEMENT ---
+    # Si Node envoie "LECTEUR_PORTE_2" sans RFID, on peut considérer que c’est un mouvement
+    if "MOUVEMENT" in device_id.upper() or "PORTE_2" in device_id.upper() or request.action == "movement":
         print(f"🌊 VAGUE DÉCLENCHÉE par {device_id}")
         event = {"type": "START_WAVE", "source": device_id}
         game_state["events"].append(event)
         return {"status": "wave_started", "events": game_state["events"]}
 
-    # 2. Gestion des tours (RFID)
-    if device_id in BORNE_CONFIG and request.rfidTag:
+    # --- 2. GESTION DES TOURS ---
+    if device_id in BORNE_CONFIG:
         config = BORNE_CONFIG[device_id]
         rfid = request.rfidTag
 
+        # Si pas de RFID, on choisit un type par défaut
         tower_type = TAG_MAPPING.get(rfid, TAG_MAPPING["DEFAULT"])
         print(f"🏰 Tour {tower_type} placée en {config['name']} ({config['x']}, {config['y']})")
 
         new_tower = {
-            "towerId": device_id,        # ✅ cohérent avec le front
-            "towerType": tower_type,     # ✅ cohérent avec le front
+            "towerId": device_id,
+            "towerType": tower_type,
             "x": config["x"],
             "y": config["y"],
         }
 
-        # Remplacement si la borne a déjà une tour
         existing_index = next(
-            (
-                index
-                for (index, d) in enumerate(game_state["towers"])
-                if d["towerId"] == device_id
-            ),
+            (i for i, t in enumerate(game_state["towers"]) if t["towerId"] == device_id),
             None,
         )
-
         if existing_index is not None:
             game_state["towers"][existing_index] = new_tower
         else:
             game_state["towers"].append(new_tower)
 
+        game_state["last_rfid"] = rfid
         return {"status": "tower_placed", "towers": game_state["towers"]}
 
     return {"error": "Unknown device or missing data"}
@@ -107,17 +87,11 @@ def handle_game_event(request: GameEventRequest):
 
 @app.get("/state")
 def get_state():
-    """
-    Appelé par le frontend toutes les ~secondes pour mettre à jour l'affichage.
-    """
     return game_state
 
 
 @app.post("/reset")
 def reset_game():
-    """
-    Réinitialise complètement le jeu.
-    """
     game_state["towers"].clear()
     game_state["events"].clear()
     game_state["last_rfid"] = None
