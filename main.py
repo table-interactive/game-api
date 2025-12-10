@@ -13,14 +13,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- CONFIG : coordonnées alignées sur la map du front ---
+# --- CONFIG : coordonnées alignées avec le frontend ---
 BORNE_CONFIG = {
-    "LECTEUR_PORTE_1": {"x": 250, "y": 250, "name": "Zone Entrée"},     # début du chemin
-    "LECTEUR_PORTE_2": {"x": 500, "y": 220, "name": "Zone Milieu"},     # zone centrale du coude
-    "BORNE_JEU_3": {"x": 850, "y": 480, "name": "Zone Sortie"},         # proche de la fin du chemin
+    "BORNE_JEU": {"x": 250, "y": 250, "name": "Zone Entrée"},
+    "BORNE_JEU_1": {"x": 600, "y": 360, "name": "Zone Milieu"},
+    "BORNE_JEU_2": {"x": 950, "y": 560, "name": "Zone Sortie"},
     "BORNE_MOUVEMENT": {"type": "GLOBAL_EVENT"},
 }
 
+# --- Mappage des badges RFID vers types de tours ---
 TAG_MAPPING = {
     "E2 45 88 A1": "Archer",
     "A4 21 55 B2": "Swordsman",
@@ -35,25 +36,23 @@ game_state = {
     "players": [],
 }
 
-
 class GameEventRequest(BaseModel):
     towerId: str
     rfidTag: Optional[str] = None
     action: Optional[str] = None
 
-
 @app.post("/tower/place")
 def handle_game_event(request: GameEventRequest):
     device_id = request.towerId.strip()
 
-    # --- GESTION DU MOUVEMENT ---
-    if "MOUVEMENT" in device_id.upper() or "PORTE_2" in device_id.upper() or request.action == "movement":
+    # --- Gestion du mouvement ---
+    if "MOUVEMENT" in device_id.upper() or request.action == "movement":
         print(f"🌊 VAGUE DÉCLENCHÉE par {device_id}")
         event = {"type": "START_WAVE", "source": device_id}
         game_state["events"].append(event)
         return {"status": "wave_started", "events": game_state["events"]}
 
-    # --- GESTION DES TOURS ---
+    # --- Gestion des tours ---
     if device_id in BORNE_CONFIG:
         config = BORNE_CONFIG[device_id]
         rfid = request.rfidTag
@@ -80,13 +79,12 @@ def handle_game_event(request: GameEventRequest):
         game_state["last_rfid"] = rfid
         return {"status": "tower_placed", "towers": game_state["towers"]}
 
+    print(f"⚠️ Appareil inconnu: {device_id}")
     return {"error": "Unknown device or missing data"}
-
 
 @app.get("/state")
 def get_state():
     return game_state
-
 
 @app.post("/reset")
 def reset_game():
