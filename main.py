@@ -24,9 +24,9 @@ BORNE_CONFIG = {
 # --- Mappage des badges RFID vers types de tours ---
 TAG_MAPPING = {
     "E2 45 88 A1": "Archer",
-    "A4 21 55 B2": "Swordsman",
-    "CC 12 99 00": "Mage",
-    "DEFAULT": "Healer",
+    "A4 21 55 B2": "Archer",
+    "CC 12 99 00": "Archer",
+    "DEFAULT": "Archer",
 }
 
 game_state = {
