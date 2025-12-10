@@ -13,11 +13,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- CONFIG ---
+# --- CONFIG : coordonnées alignées sur la map du front ---
 BORNE_CONFIG = {
-    "LECTEUR_PORTE_1": {"x": 150, "y": 300, "name": "Zone Entrée"},
-    "LECTEUR_PORTE_2": {"x": 400, "y": 100, "name": "Zone Centre"},
-    "BORNE_JEU_3": {"x": 650, "y": 300, "name": "Zone Sortie"},
+    "LECTEUR_PORTE_1": {"x": 250, "y": 250, "name": "Zone Entrée"},     # début du chemin
+    "LECTEUR_PORTE_2": {"x": 600, "y": 360, "name": "Zone Milieu"},     # zone centrale du coude
+    "BORNE_JEU_3": {"x": 950, "y": 560, "name": "Zone Sortie"},         # proche de la fin du chemin
     "BORNE_MOUVEMENT": {"type": "GLOBAL_EVENT"},
 }
 
@@ -46,21 +46,19 @@ class GameEventRequest(BaseModel):
 def handle_game_event(request: GameEventRequest):
     device_id = request.towerId.strip()
 
-    # --- 1. GESTION DU MOUVEMENT ---
-    # Si Node envoie "LECTEUR_PORTE_2" sans RFID, on peut considérer que c’est un mouvement
+    # --- GESTION DU MOUVEMENT ---
     if "MOUVEMENT" in device_id.upper() or "PORTE_2" in device_id.upper() or request.action == "movement":
         print(f"🌊 VAGUE DÉCLENCHÉE par {device_id}")
         event = {"type": "START_WAVE", "source": device_id}
         game_state["events"].append(event)
         return {"status": "wave_started", "events": game_state["events"]}
 
-    # --- 2. GESTION DES TOURS ---
+    # --- GESTION DES TOURS ---
     if device_id in BORNE_CONFIG:
         config = BORNE_CONFIG[device_id]
         rfid = request.rfidTag
-
-        # Si pas de RFID, on choisit un type par défaut
         tower_type = TAG_MAPPING.get(rfid, TAG_MAPPING["DEFAULT"])
+
         print(f"🏰 Tour {tower_type} placée en {config['name']} ({config['x']}, {config['y']})")
 
         new_tower = {
