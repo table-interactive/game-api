@@ -8,24 +8,28 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # En dev, on laisse tout passer
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- CONFIGURATION HARDCODÉE (La "Carte" physique) ---
-# Associe le nom de l'Arduino (DEVICE_ID) à une position X/Y sur l'écran
+# --- 1. CONFIGURATION DES EMPLACEMENTS (Aligné sur le Frontend) ---
+# On utilise exactement les coordonnées de vos "SLOTS" dans le code React (S1, S2, S3)
 BORNE_CONFIG = {
-    "BORNE_JEU_1": {"x": 150, "y": 300, "name": "Zone Entrée"},
-    "BORNE_JEU_2": {"x": 400, "y": 100, "name": "Zone Centre"},
-    "BORNE_JEU_3": {"x": 650, "y": 300, "name": "Zone Sortie"},
-    # Le capteur de mouvement n'a pas de position fixe, il déclenche un événement global
+    # Slot 1 (S1) du frontend
+    "BORNE_JEU_1": {"x": 250, "y": 250, "name": "Emplacement Haut Gauche"},
+    # Slot 2 (S2) du frontend
+    "BORNE_JEU_2": {"x": 650, "y": 200, "name": "Emplacement Haut Centre"},
+    # Slot 3 (S3) du frontend
+    "BORNE_JEU_3": {"x": 950, "y": 450, "name": "Emplacement Bas Droite"},
+    # Capteur ultrason
     "BORNE_MOUVEMENT": {"type": "GLOBAL_EVENT"},
 }
 
-# --- CONFIGURATION DES BADGES (Le "Grimoire") ---
-# Associe un ID de badge RFID à un Type de Tour (Feu, Glace, etc.)
+# --- 2. CONFIGURATION DES BADGES (Aligné sur le Frontend) ---
+# On mappe les RFIDs vers les noms exacts attendus par PIXI.js :
+# "Archer", "Swordsman", "Mage", "Healer"
 TAG_MAPPING = {
     "E2 45 88 A1": "Archer",
     "A4 21 55 B2": "Swordsman",
@@ -45,9 +49,9 @@ game_state = {
 # --- MODÈLES DE DONNÉES ---
 
 class GameEventRequest(BaseModel):
-    towerId: str  # ex: "BORNE_JEU_1"
-    rfidTag: Optional[str] = None  # ex: "E2 45 88..." (Seulement si RFID)
-    action: Optional[str] = None  # ex: "movement" (Seulement si Mouvement)
+    towerId: str
+    rfidTag: Optional[str] = None
+    action: Optional[str] = None
 
 
 # --- ROUTES ---
@@ -96,7 +100,6 @@ def handle_game_event(request: GameEventRequest):
         else:
             game_state["towers"].append(new_tower)
 
-        game_state["last_rfid"] = rfid
         return {"status": "tower_placed", "towers": game_state["towers"]}
 
     return {"error": "Unknown device or missing data"}
