@@ -16,8 +16,8 @@ app.add_middleware(
 # --- CONFIG : coordonnées alignées sur la map du front ---
 BORNE_CONFIG = {
     "LECTEUR_PORTE_1": {"x": 250, "y": 250, "name": "Zone Entrée"},     # début du chemin
-    "LECTEUR_PORTE_2": {"x": 600, "y": 360, "name": "Zone Milieu"},     # zone centrale du coude
-    "BORNE_JEU_3": {"x": 950, "y": 560, "name": "Zone Sortie"},         # proche de la fin du chemin
+    "LECTEUR_PORTE_2": {"x": 500, "y": 220, "name": "Zone Milieu"},     # zone centrale du coude
+    "BORNE_JEU_3": {"x": 850, "y": 480, "name": "Zone Sortie"},         # proche de la fin du chemin
     "BORNE_MOUVEMENT": {"type": "GLOBAL_EVENT"},
 }
 
